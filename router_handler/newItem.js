@@ -43,14 +43,14 @@ const db = require('../db/index');
 
 //             //查询当前一级分类下的 所有商品（多对多）
 //             db.query(
-//               `SELECT 
-//                 p.id, 
-//                 p.name, 
-//                 p.desc, 
-//                 CAST(p.price AS CHAR) AS price, 
-//                 p.picture, 
-//                 p.discount, 
-//                 p.order_num AS orderNum 
+//               `SELECT
+//                 p.id,
+//                 p.name,
+//                 p.desc,
+//                 CAST(p.price AS CHAR) AS price,
+//                 p.picture,
+//                 p.discount,
+//                 p.order_num AS orderNum
 //               FROM product p
 //               JOIN category_product cp ON p.id = cp.product_id
 //               WHERE cp.category_id = ?`,
@@ -98,79 +98,72 @@ function queryPromise(sql, params) {
   });
 }
 
-const getAllCategory = async function (req, res) { 
+// 3 次查询取全部数据，用 Map 在内存中组装分类树，分类越多性能优势越明显
+const getAllCategory = async function (req, res) {
   try {
-    // 1. 查询所有一级分类 parent_id IS NULL 
-    console.log('查询所有一级分类 parent_id IS NULL'); 
-    const level1List = await queryPromise( 
-      'SELECT id, name, picture FROM category WHERE parent_id IS NULL'
-    ); 
-    
-    console.log(level1List); 
-    const result = []; 
-    
-    //如果一级分类为空，直接返回空数组 
-    if (level1List.length === 0) { 
-      return res.json({ code: "1", msg: "操作成功", result: result }); 
-    } 
-    
-    // 遍历每个一级分类 
-    for (const level1 of level1List) { 
-      const level1Id = level1.id; 
-      console.log(level1Id); 
-      
-      // 查询当前一级分类下的 二级分类 
-      const level2List = await queryPromise( 
-        'SELECT id, name, picture FROM category WHERE parent_id = ?', 
-        [level1Id]
-      ); 
-      
-      // 组装二级分类 
-      const children = level2List.map(function (item) { 
-        return { 
-          id: item.id, 
-          name: item.name, 
-          picture: item.picture, 
-          children: null, 
-          goods: null 
-        }; 
-      }); 
+    // 两次查询互相独立，用 Promise.all 并行执行
+    const [allCategories, goodsWithCategory] = await Promise.all([
+      // 1. 查询所有分类
+      queryPromise('SELECT id, name, picture, parent_id FROM category'),
+      // 2. 查询所有商品及其分类关联
+      queryPromise(
+        `SELECT
+          p.id,
+          p.name,
+          p.desc,
+          CAST(p.price AS CHAR) AS price,
+          p.picture,
+          p.discount,
+          p.order_num AS orderNum,
+          cp.category_id
+        FROM product p
+        JOIN category_product cp ON p.id = cp.product_id`
+      )
+    ]);
 
-      //查询当前一级分类下的 所有商品（多对多） 
-      const goods = await queryPromise( 
-        `SELECT 
-          p.id, 
-          p.name, 
-          p.desc, 
-          CAST(p.price AS CHAR) AS price, 
-          p.picture, 
-          p.discount, 
-          p.order_num AS orderNum 
-        FROM product p 
-        JOIN category_product cp ON p.id = cp.product_id 
-        WHERE cp.category_id = ?`, 
-        [level1Id]
-      ); 
-      
-      // 一级分类最终结构 
-      result.push({ 
-        id: level1.id, 
-        name: level1.name, 
-        picture: level1.picture, 
-        children: children, 
-        goods: goods || [] 
-      }); 
-    } 
-    
-    // 全部处理完返回 
-    res.json({ 
-      code: "1", 
-      msg: "操作成功", 
-      result: result 
-    }); 
-  } catch (err) {
-    console.error('获取分类失败:', err);
-    return res.json({ code: "-1", msg: "服务器异常", result: null }); 
+    // 3. 用 Map 存储所有分类节点
+    const categoryMap = new Map();
+    const rootCategories = []; // 存储一级分类
+
+    allCategories.forEach(item => {
+      const node = {
+        id: item.id,
+        name: item.name,
+        picture: item.picture,
+        children: [],
+        goods: []
+      };
+      categoryMap.set(item.id, node);
+
+      // 如果是一级分类（parent_id IS NULL），加入根数组
+      if (item.parent_id === null) {
+        rootCategories.push(node);
+      }
+    });
+
+    // 4. 将子分类挂载到父分类的 children 中
+    allCategories.forEach(item => {
+      if (item.parent_id !== null && categoryMap.has(item.parent_id)) {
+        const parentNode = categoryMap.get(item.parent_id);
+        parentNode.children.push(categoryMap.get(item.id));
+      }
+    });
+
+    // 5. 将商品挂载到对应的分类下
+    goodsWithCategory.forEach(goods => {
+      const categoryId = goods.category_id;
+      if (categoryMap.has(categoryId)) {
+        // 删除 category_id 字段，避免暴露不必要的数据
+        const { category_id, ...goodsData } = goods;
+        categoryMap.get(categoryId).goods.push(goodsData);
+      }
+    });
+
+    return res.json({ code: "1", msg: "操作成功", result: rootCategories });
+
+  } catch (error) {
+    console.error('获取分类数据失败:', error);
+    return res.json({ code: "-1", msg: "服务器异常", result: null });
   }
 };
 
@@ -178,4 +171,3 @@ const getAllCategory = async function (req, res) {
 module.exports = {
   getAllCategory
 }
-

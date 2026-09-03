@@ -37,7 +37,7 @@ const userRouter = require('./router/user');
 app.use('/api', userRouter);
 
 //导入商品路由模块并使用
-const newItemRouter = require('./router/newItem,');
+const newItemRouter = require('./router/newItem');
 app.use('/api', newItemRouter);
 
 //导入购物车路由模块并使用
@@ -54,7 +54,7 @@ app.use(orderRouter);
 
 //导入支付路由模块并使用
 const payRouter = require('./router/pay');
-app.use('/pay', payRouter);
+app.use('/api/pay', payRouter);
 
 
 

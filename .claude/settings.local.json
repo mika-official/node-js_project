@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir /b /s \"d:\\\\16121\\\\Documents\\\\api_server\\\\*\")"
+    ]
+  }
+}
