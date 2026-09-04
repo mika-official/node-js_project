@@ -54,7 +54,7 @@ app.use(orderRouter);
 
 //导入支付路由模块并使用
 const payRouter = require('./router/pay');
-app.use('/api/pay', payRouter);
+app.use('/pay', payRouter);
 
 
 
