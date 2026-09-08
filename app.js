@@ -56,6 +56,12 @@ app.use(orderRouter);
 const payRouter = require('./router/pay');
 app.use('/pay', payRouter);
 
+const myGoodsRouter = require('./router/myGoods');
+app.use(myGoodsRouter);
+
+//导入我的订单路由模块并使用
+const myOrderRouter = require('./router/myOrder');
+app.use(myOrderRouter);
 
 
 // 配置JWT错误处理中间件

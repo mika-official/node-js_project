@@ -175,7 +175,7 @@ const getOrder = async (req, res) => {
     // 4. 验证商品SKU和库存（快速失败，最终防超卖由事务内的条件扣减保证）
     const skuIds = goods.map(item => item.skuId);
     const skuResult = await queryPromise(
-      'SELECT id, price, stock, skuid FROM product WHERE skuid IN (?)',
+      'SELECT id, price, stock, skuid, seller_id FROM product WHERE skuid IN (?)',
       [skuIds]
     );
 
@@ -232,6 +232,20 @@ const getOrder = async (req, res) => {
         'INSERT INTO order_product (order_id, skuid, count, price) VALUES ?',
         [orderGoodsValues]
       );
+
+      // 6.2.1 插入订单-卖家关系表：一个订单可能包含多个卖家的商品，
+      //        按卖家去重，无卖家的商品（seller_id 为空）跳过
+      const sellerIds = [...new Set(
+        goods
+          .map(item => skuResult.find(s => s.skuid === item.skuId)?.seller_id)
+          .filter(Boolean)
+      )];
+      if (sellerIds.length > 0) {
+        await tx.query(
+          'INSERT INTO order_seller (order_id, seller_id) VALUES ?',
+          [sellerIds.map(sellerId => [orderId, sellerId])]
+        );
+      }
 
       // 6.3 原子扣库存：stock >= ? 防止超卖
       //     并发下条件不满足时 affectedRows 为 0，抛错回滚整个订单

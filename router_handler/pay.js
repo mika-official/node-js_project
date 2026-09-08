@@ -66,9 +66,9 @@ const goPay = async (req, res) => {
     const orderId = req.query.orderId;
     const redirectEncode = req.query.redirect;
     // 用户ID由JWT中间件从token解析而来，不需要前端额外传参
-    // const userId = req.auth && req.auth.user_id;
+    const userId = req.auth && req.auth.user_id;
 
-    const userId = 1;
+    // const userId = 1;
 
     if (!userId) {
       return res.status(401).send('未登录或登录已过期');
