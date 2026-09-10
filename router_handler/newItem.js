@@ -116,8 +116,9 @@ const getAllCategory = async function (req, res) {
           p.discount,
           p.order_num AS orderNum,
           cp.category_id
-        FROM product p
-        JOIN category_product cp ON p.id = cp.product_id`
+        FROM category_product cp
+        JOIN (SELECT id, MIN(skuid) AS skuid FROM product GROUP BY id) t ON t.id = cp.product_id
+        JOIN product p ON p.skuid = t.skuid`
       )
     ]);
 

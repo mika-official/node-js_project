@@ -367,7 +367,7 @@ const addCartItem = async function (req, res) {
             p.discount,
             p.post_fee AS postFee
         FROM cart c
-        JOIN product p ON c.product_id = p.id
+        JOIN product p ON c.skuid = p.skuid
         WHERE c.cart_id = ?
       `, [cartId]);
       return rows[0];

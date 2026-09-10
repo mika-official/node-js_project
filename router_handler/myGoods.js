@@ -26,9 +26,10 @@ const getMyGoods = async (req, res) => {
         const offset = (page - 1) * pageSize;
 
         // 3. 并行查询：总数 + 当前页数据
+        // product 表每个 SKU 一行，商家商品列表按商品(id)去重展示
         const countPromise = new Promise((resolve, reject) => {
             db.query(
-                'SELECT COUNT(*) AS total FROM product WHERE seller_id = ?',
+                'SELECT COUNT(DISTINCT id) AS total FROM product WHERE seller_id = ?',
                 [userId],
                 (err, data) => {
                     if (err) reject(err);
@@ -39,7 +40,11 @@ const getMyGoods = async (req, res) => {
 
         const dataPromise = new Promise((resolve, reject) => {
             db.query(
-                'SELECT name, price, `desc`, stock, picture FROM product WHERE seller_id = ? ORDER BY id DESC LIMIT ? OFFSET ?',
+                `SELECT p.name, p.price, p.\`desc\`, p.stock, p.picture
+                 FROM product p
+                 JOIN (SELECT id, MIN(skuid) AS skuid FROM product WHERE seller_id = ? GROUP BY id) t
+                   ON t.skuid = p.skuid
+                 ORDER BY p.id DESC LIMIT ? OFFSET ?`,
                 [userId, Number(pageSize), Number(offset)],
                 (err, data) => {
                     if (err) reject(err);

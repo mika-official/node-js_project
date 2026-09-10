@@ -20,7 +20,11 @@ const getGoodGoods = function (req, res) {
     return res.json({ code: "0", msg: "获取热门商品成功", result: cached });
   }
 
-  const sql = 'SELECT * FROM product ORDER BY price ASC LIMIT ?';
+  // product 表每个 SKU 一行，按 id 去重后每个商品只出现一次
+  const sql = `
+    SELECT p.* FROM product p
+    JOIN (SELECT id, MIN(skuid) AS skuid FROM product GROUP BY id) t ON t.skuid = p.skuid
+    ORDER BY p.price ASC LIMIT ?`;
   db.query(sql, [count], (err, results) => {
     if (err) {
       return res.json({ code: "-1", msg: "服务器异常", result: null });
