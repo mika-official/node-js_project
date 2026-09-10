@@ -479,6 +479,7 @@ const getCartItems = (req, res) => {
     SELECT
       c.cart_id AS cartId,
       c.skuid AS skuId,
+      c.product_id AS productId,
       c.selected,
       c.count,
       p.name AS productName,
@@ -510,8 +511,28 @@ const getCartItems = (req, res) => {
   });
 }
 
+// 删除购物车商品（按 SKU 列表批量删除）
+const delCartItems = async (req, res) => {
+  try {
+    const userId = req.auth.user_id;
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.json({ code: "-1", msg: "参数错误", result: null });
+    }
+    await queryPromise(
+      'DELETE FROM cart WHERE user_id = ? AND skuid IN (?)',
+      [userId, ids]
+    );
+    res.json({ code: "1", msg: "操作成功", result: null });
+  } catch (err) {
+    console.error('删除购物车商品失败:', err);
+    return res.json({ code: "-1", msg: "服务器异常", result: null });
+  }
+};
+
 module.exports = {
   addCartItem,
   getCartItems,
-  mergeCart
+  mergeCart,
+  delCartItems
 }

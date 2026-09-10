@@ -9,6 +9,9 @@ router.get('/member/cart', cartHandler.getCartItems);
 // 加入购物车接口
 router.post('/member/cart', cartHandler.addCartItem);
 
+// 删除购物车商品（按 SKU 列表）
+router.delete('/member/cart', cartHandler.delCartItems);
+
 
 /**
  * 合并本地购物车到服务器

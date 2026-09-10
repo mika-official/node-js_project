@@ -9,12 +9,15 @@ app.listen(3000, () => {
 //导入并配置cors中间件
 const cors = require('cors');
 app.use(cors());
+// JSON 和表单两种请求体都支持（前端 axios 默认发 JSON）
+app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
 // 导入并配置JWT中间件
 const { expressjwt } = require('express-jwt');
 const config = require('./config');
-app.use(expressjwt({ secret: config.jwtSecret, algorithms: ['HS256'], credentialsRequired: false }).unless({ path: [/^\/api/] }));  
+// /pay/alipay 是支付页 <a> 链接跳转，浏览器带不了 Authorization 头，需免鉴权（goPay 内部会做订单校验）
+app.use(expressjwt({ secret: config.jwtSecret, algorithms: ['HS256'], credentialsRequired: false }).unless({ path: [/^\/api/, /^\/pay\/alipay/] }));
 
 //导入热门商品路由模块并使用
 const hotRouter = require('./router/hot');
@@ -62,6 +65,10 @@ app.use(myGoodsRouter);
 //导入我的订单路由模块并使用
 const myOrderRouter = require('./router/myOrder');
 app.use(myOrderRouter);
+
+//导入买家订单列表与支付信息路由模块并使用
+const orderListRouter = require('./router/orderList');
+app.use(orderListRouter);
 
 
 // 配置JWT错误处理中间件
