@@ -70,6 +70,16 @@ app.use(myOrderRouter);
 const orderListRouter = require('./router/orderList');
 app.use(orderListRouter);
 
+//导入推荐路由模块并使用
+// 注意：不能挂在 /api 下——JWT 中间件豁免所有 /api 路径，req.auth 永远是 undefined，
+// 登录态推荐分支就不会生效。挂根路径后未登录请求不报 401（credentialsRequired:false），走热门兜底
+const recommendRouter = require('./router/recommend');
+app.use(recommendRouter);
+
+//导入点赞收藏路由模块并使用（需要登录）
+const favorRouter = require('./router/favor');
+app.use(favorRouter);
+
 
 // 配置JWT错误处理中间件
 app.use((err, req, res, next) => {

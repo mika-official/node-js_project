@@ -60,7 +60,8 @@ async function collectSpuIds() {
   return ids;
 }
 
-// 拉取 SPU 详情，返回该 SPU 下的所有 SKU 行
+// 拉取 SPU 详情，返回该 SPU 下的所有 SKU 行 + 分类树 + 分类映射
+// 返回 { rows, categories, mappings }；无详情返回 null
 async function fetchSkuRows(spuId) {
   const detail = await fetchJson(`${BASE}/goods?id=${spuId}`);
   const spu = detail.result;
@@ -69,6 +70,21 @@ async function fetchSkuRows(spuId) {
   }
   const spuIdStr = String(spu.id);
   if (spuIdStr.length > MAX_ID_LEN) return null;
+
+  // 分类树：categories[1] 是一级（parent=null），categories[0] 是二级（parent=一级）
+  // 同时记录"一级分类 ↔ SPU"的映射（推荐接口按类目找同类商品用）
+  const categories = [];
+  const mappings = [];
+  for (const cat of spu.categories || []) {
+    if (String(cat.id).length <= MAX_ID_LEN) {
+      const parentId = cat.parent && String(cat.parent.id).length <= MAX_ID_LEN ? String(cat.parent.id) : null;
+      categories.push([String(cat.id), String(cat.name || '').slice(0, 255), cat.picture || null, parentId]);
+    }
+  }
+  const topCat = (spu.categories || []).find((c) => c.layer === 1);
+  if (topCat && String(topCat.id).length <= MAX_ID_LEN) {
+    mappings.push([String(topCat.id), spuIdStr]);
+  }
 
   const rows = [];
   for (const sku of spu.skus) {
@@ -94,27 +110,64 @@ async function fetchSkuRows(spuId) {
       Number(spu.salesCount) || 0 // hot_score
     ]);
   }
-  return rows;
+  return { rows, categories, mappings };
+}
+
+function queryP(sql, params) {
+  return new Promise((resolve, reject) => {
+    db.query(sql, params, (err, results) => (err ? reject(err) : resolve(results)));
+  });
 }
 
 async function upsert(rows) {
   if (rows.length === 0) return;
-  return new Promise((resolve, reject) => {
-    db.query(
-      `INSERT INTO product
-         (id, skuid, seller_id, name, price, \`desc\`, stock, picture, discount,
-          order_num, now_price, now_original_price, post_fee, pay_price, hot_score)
-       VALUES ?
-       ON DUPLICATE KEY UPDATE
-         name = VALUES(name), price = VALUES(price), \`desc\` = VALUES(\`desc\`),
-         stock = VALUES(stock), picture = VALUES(picture), discount = VALUES(discount),
-         order_num = VALUES(order_num), now_price = VALUES(now_price),
-         now_original_price = VALUES(now_original_price), post_fee = VALUES(post_fee),
-         pay_price = VALUES(pay_price), hot_score = VALUES(hot_score)`,
-      [rows],
-      (err, results) => (err ? reject(err) : resolve(results))
-    );
+  return queryP(
+    `INSERT INTO product
+       (id, skuid, seller_id, name, price, \`desc\`, stock, picture, discount,
+        order_num, now_price, now_original_price, post_fee, pay_price, hot_score)
+     VALUES ?
+     ON DUPLICATE KEY UPDATE
+       name = VALUES(name), price = VALUES(price), \`desc\` = VALUES(\`desc\`),
+       stock = VALUES(stock), picture = VALUES(picture), discount = VALUES(discount),
+       order_num = VALUES(order_num), now_price = VALUES(now_price),
+       now_original_price = VALUES(now_original_price), post_fee = VALUES(post_fee),
+       pay_price = VALUES(pay_price), hot_score = VALUES(hot_score)`,
+    [rows]
+  );
+}
+
+// 分类树按 id 去重后写入 category 表
+async function upsertCategories(categories) {
+  const seen = new Set();
+  const unique = categories.filter((c) => {
+    if (seen.has(c[0])) return false;
+    seen.add(c[0]);
+    return true;
   });
+  if (unique.length === 0) return;
+  // 父分类（parent_id 为 null）先插入，否则同一批里子分类会因外键找不到父行而失败
+  unique.sort((a, b) => (a[3] === null ? -1 : 1) - (b[3] === null ? -1 : 1));
+  return queryP(
+    `INSERT INTO category (id, name, picture, parent_id) VALUES ?
+     ON DUPLICATE KEY UPDATE name = VALUES(name), picture = VALUES(picture), parent_id = VALUES(parent_id)`,
+    [unique]
+  );
+}
+
+// "一级分类 ↔ SPU" 映射写入 category_product
+async function upsertMappings(mappings) {
+  const seen = new Set();
+  const unique = mappings.filter((m) => {
+    const key = `${m[0]}_${m[1]}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (unique.length === 0) return;
+  return queryP(
+    'INSERT IGNORE INTO category_product (category_id, product_id) VALUES ?',
+    [unique]
+  );
 }
 
 // 小并发池：最多 5 个详情请求同时在飞，请求间留 50ms 间隔
@@ -147,13 +200,17 @@ async function main() {
   const selected = spuIds.slice(0, LIMIT);
 
   console.log('拉取详情并生成 SKU 行 ...');
-  const skuRowsGroups = await pool(selected, fetchSkuRows);
+  const groups = await pool(selected, fetchSkuRows);
 
-  const rows = skuRowsGroups.flatMap((g) => g || []);
-  console.log(`有效 SKU 行数：${rows.length}`);
+  const rows = groups.flatMap((g) => (g ? g.rows : []));
+  const categories = groups.flatMap((g) => (g ? g.categories : []));
+  const mappings = groups.flatMap((g) => (g ? g.mappings : []));
+  console.log(`有效 SKU 行数：${rows.length}，分类：${categories.length}，分类映射：${mappings.length}`);
 
-  console.log('写入本地 product 表 ...');
+  console.log('写入本地 product / category / category_product 表 ...');
   await upsert(rows);
+  await upsertCategories(categories);
+  await upsertMappings(mappings);
   console.log('完成。');
 
   process.exit(0);

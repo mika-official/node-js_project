@@ -1,0 +1,1 @@
+{"dataset": "retailrocket", "local_merged": true, "n_users": 4663, "n_items": 4452, "n_train": 16184, "emb_dim": 32, "val_hr10": 0.1942, "test_hr10": 0.2079, "test_ndcg10": 0.1037, "trained_at": "2026-09-10 21:31:59"}
