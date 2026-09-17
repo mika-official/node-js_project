@@ -107,15 +107,12 @@ const goPay = async (req, res) => {
       }
     };
 
-    // 5. 调用支付宝 SDK 生成支付表单（pageExec 是回调式 API，包成 Promise 等它完成后再返回）
+    // 5. 调用支付宝 SDK 生成支付表单
+    // 注意：pageExec 不接受回调——v3 同步返回表单 HTML 字符串，v4 返回 Promise；
+    // 之前的"回调式 Promise 包装"回调永远不触发，会导致请求死锁
     let formHtml;
     try {
-      formHtml = await new Promise((resolve, reject) => {
-        alipaySdk.pageExec('alipay.trade.page.pay', params, (err, data) => {
-          if (err) reject(err);
-          else resolve(data);
-        });
-      });
+      formHtml = await alipaySdk.pageExec('alipay.trade.page.pay', params);
     } catch (err) {
       console.error('支付宝支付创建失败:', err); // 打印完整错误堆栈
       return res.send('支付宝支付创建失败');
